@@ -1,0 +1,229 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  JOB_SEEKER
+  EMPLOYER
+  ADMIN
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWED
+  SHORTLISTED
+  REJECTED
+  ACCEPTED
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  FREELANCE
+  INTERNSHIP
+}
+
+enum ExperienceLevel {
+  ENTRY_LEVEL
+  MID_LEVEL
+  SENIOR_LEVEL
+  EXECUTIVE
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  EXPIRED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      UserRole @default(JOB_SEEKER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  profile      Profile?
+  company      Company?
+  applications Application[]
+  jobs         Job[]         @relation("JobPostedBy")
+  userSkills   UserSkill[]
+
+  @@map("users")
+}
+
+model Profile {
+  id          String    @id @default(cuid())
+  firstName   String
+  lastName    String
+  phone       String?
+  dateOfBirth DateTime?
+  bio         String?
+  location    String?
+  website     String?
+  resumeUrl   String?
+  avatarUrl   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Foreing Keys
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Company {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  website     String?
+  logoUrl     String?
+  industry    String?
+  size        String?
+  location    String?
+  founded     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Foreign Keys
+  ownerId String @unique
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Relations
+  jobs Job[]
+
+  @@map("companies")
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  jobs Job[]
+
+  @@map("categories")
+}
+
+model Skill {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userSkills UserSkill[]
+  jobSkills  JobSkill[]
+
+  @@map("skills")
+}
+
+model Job {
+  id               String          @id @default(cuid())
+  title            String
+  description      String
+  requirements     String?
+  responsibilities String?
+  type             JobType         @default(FULL_TIME)
+  experienceLevel  ExperienceLevel @default(ENTRY_LEVEL)
+  salaryMin        Int?
+  salaryMax        Int?
+  currency         String          @default("IND")
+  location         String?
+  isRemote         Boolean         @default(false)
+  applicationEmail String?
+  applicationUrl   String?
+  status           JobStatus       @default(DRAFT)
+  expiresAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Foreign Keys
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  postedById String
+  postedBy   User      @relation("JobPostedBy", fields: [postedById], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  // Relations
+  applications Application[]
+  jobSkills    JobSkill[]
+
+  @@map("jobs")
+}
+
+model Application {
+  id          String            @id @default(cuid())
+  coverLetter String?
+  resumeUrl   String?
+  status      ApplicationStatus @default(PENDING)
+  appliedAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Foreign Keys
+  jobId       String
+  job         Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applicantId String
+  applicant   User   @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  // Unique constraint to prevent duplicate applications
+  @@unique([jobId, applicantId])
+  @@map("applications")
+}
+
+// Junction table for User-Skill many-to-many relationship
+model UserSkill {
+  id          String   @id @default(cuid())
+  proficiency String? // e.g., "Beginner", "Intermediate", "Advanced", "Expert"
+  yearsOfExp  Int?
+  createdAt   DateTime @default(now())
+
+  // Foreign Keys
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+  @@map("user_skills")
+}
+
+// Junction table for Job-Skill many-to-many relationship
+model JobSkill {
+  id         String  @id @default(cuid())
+  isRequired Boolean @default(true)
+  experience String?
+
+  // Foreign Keys
+  jobId   String
+  job     Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, skillId])
+  @@map("job_skills")
+}

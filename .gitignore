@@ -1,0 +1,15 @@
+# Create .gitignore
+echo "node_modules/
+node_modules
+dist/
+.env
+.env.local
+.env.production
+uploads/
+*.log
+.DS_Store
+coverage/
+.nyc_output/
+.vscode/
+.idea/" > .gitignore
+/src/generated/prisma
