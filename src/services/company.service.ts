@@ -16,7 +16,7 @@ interface CreateCompanyData {
 interface UpdateCompanyData {
   name?: string;
   description?: string;
-  webstie?: string;
+  website?: string;
   industry?: string;
   size?: string;
   location?: string;
@@ -182,6 +182,170 @@ export class CompanyService {
       );
     }
 
+    // check if company name is unique
+    const existingCompany = await this.db.getClient().company.findFirst({
+      where: {
+        name: {
+          equals: name.trim(),
+          mode: "insensitive",
+        },
+      },
+    });
+
+    if (existingCompany) {
+      throw new AppError("Company with this name already exists", 409);
+    }
+
+    const company = await this.db.getClient().company.create({
+      data: {
+        name: name.trim(),
+        description: description?.trim(),
+        website: website?.trim(),
+        industry: industry?.trim(),
+        size,
+        location: location?.trim(),
+        founded: foundedDate,
+        ownerId,
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return company;
+  }
+
+  /**
+   * Get company by owner ID
+   */
+  public async getCompanyByOwnerId(ownerId: string) {
+    const company = await this.db.getClient().company.findUnique({
+      where: { ownerId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+        jobs: {
+          orderBy: {
+            createdBy: "desc",
+          },
+          take: 10,
+          include: {
+            category: true,
+            _count: {
+              select: {
+                applications: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            jobs: true,
+          },
+        },
+      },
+    });
+
+    if (!company) {
+      throw new AppError("Company not found", 404);
+    }
+
+    return company;
+  }
+
+  /**
+   * Update company information
+   */
+  public async updateCompany(ownerId: string, data: UpdateCompanyData) {
+    const { name, description, website, industry, size, location, founded } =
+      data;
+
+    // Check if company exists and user owns it
+    const existingCompany = await this.db.getClient().company.findUnique({
+      where: { ownerId },
+    });
+
+    if (!existingCompany) {
+      throw new AppError("Company not found", 404);
+    }
+
+    // Check if another company with the same name exists (if name is being changed)
+    if (name && name.trim() !== existingCompany.name) {
+      const duplicateCompany = await this.db.getClient().company.findFirst({
+        where: {
+          id: { not: existingCompany.id },
+          name: {
+            equals: name.trim(),
+            mode: "insensitive",
+          },
+        },
+      });
+
+      if (duplicateCompany) {
+        throw new AppError("Company with this name already exists", 409);
+      }
+    }
+
+    // Validate website URL if provided
+    if (website && !this.isValidUrl(website)) {
+      throw new AppError("Invalid website URL", 400);
+    }
+
+    // Validate founded date if provided
+    let foundedDate;
+    if (founded !== undefined) {
+      if (founded) {
+        foundedDate = new Date(founded);
+        if (isNaN(foundedDate.getTime())) {
+          throw new AppError("Invalid founded date format", 400);
+        }
+
+        if (foundedDate > new Date()) {
+          throw new AppError("Founded date cannot be in the future", 400);
+        }
+      } else {
+        foundedDate = null;
+      }
+    }
+
+    // Validate company size format
+    const validSizes = [
+      "1-10",
+      "11-50",
+      "51-200",
+      "201-500",
+      "501-1000",
+      "1000+",
+    ];
+
+    if (size && !validSizes.includes(size)) {
+      throw new AppError(
+        "Invalid company size. Valid options: " + validSizes.join(", "),
+        400
+      );
+    }
+
     const updatedCompany = await this.db.getClient().company.update({
       where: { ownerId },
       data: {
@@ -284,8 +448,12 @@ export class CompanyService {
       throw new AppError("Company not found", 404);
     }
 
+    type Job = { id: string; status: string };
+
     // Check if company has active jobs
-    const activeJobs = company.jobs.filter((job) => job.status === "PUBLISHED");
+    const activeJobs = company.jobs.filter(
+      (job: Job) => job.status === "PUBLISHED"
+    );
     if (activeJobs.length > 0) {
       throw new AppError(
         "Cannot delete company with active job postings. Please close or delete all jobs first.",
@@ -451,19 +619,46 @@ export class CompanyService {
       },
     });
 
+    // Get application status breakdown
+    const applicationStatusStats = await this.db
+      .getClient()
+      .application.groupBy({
+        by: ["status"],
+        where: {
+          job: {
+            companyId,
+          },
+        },
+        _count: true,
+      });
+
+    type JobStat = { status: string; _count: number };
+
     return {
       company: {
         id: company.id,
         name: company.name,
         totalJobs: company._count.jobs,
+        createdAt: company.createdAt,
       },
-      jobsByStatus: jobStats.reduce((acc, stat) => {
-        acc[stat.status] = stat._count;
-        return acc;
-      }, {} as Record<string, number>),
-      totalApplications,
-      recentApplications,
-      createdAt: company.createdAt,
+      jobsByStatus: jobStats.reduce(
+        (acc: Record<string, number>, stat: any) => {
+          acc[stat.status] = stat._count;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
+      applications: {
+        total: totalApplications,
+        recent: recentApplications,
+        byStatus: applicationStatusStats.reduce(
+          (acc: Record<string, number>, stat: any) => {
+            acc[stat.status] = stat._count;
+            return acc;
+          },
+          {} as Record<string, number>
+        ),
+      },
     };
   }
 
@@ -514,6 +709,125 @@ export class CompanyService {
   }
 
   /**
+   * Get companies by size
+   */
+  public async getComapniesBySize(size: string, skip: number, limit: number) {
+    const validSizes = [
+      "1-10",
+      "11-50",
+      "51-200",
+      "201-500",
+      "501-1000",
+      "1000+",
+    ];
+
+    if (!validSizes.includes(size)) {
+      throw new AppError("Invalid company size filter", 400);
+    }
+
+    const [companies, total] = await Promise.all([
+      this.db.getClient().company.findMany({
+        skip,
+        take: limit,
+        where: { size },
+        include: {
+          _count: {
+            select: {
+              jobs: {
+                where: {
+                  status: "PUBLISHED",
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          name: "asc",
+        },
+      }),
+    ]);
+
+    return { companies, total };
+  }
+
+  /**
+   * Get all unique industries
+   */
+  public async getIndustries() {
+    const industries = await this.db.getClient().company.groupBy({
+      by: ["industry"],
+      where: {
+        industry: {
+          not: null,
+        },
+      },
+      _count: {
+        industry: true,
+      },
+      orderBy: {
+        industry: "asc",
+      },
+    });
+
+    return industries.map((item: any) => ({
+      industry: item.industry,
+      count: item._count.industry,
+    }));
+  }
+
+  /**
+   * Get company locations (unique locations)
+   */
+  public async getCompanyLocations() {
+    const locations = await this.db.getClient().company.groupBy({
+      by: ["location"],
+      where: {
+        location: {
+          not: null,
+        },
+      },
+      _count: {
+        location: true,
+      },
+      orderBy: {
+        location: "asc",
+      },
+    });
+
+    return locations.map((item: any) => ({
+      location: item.location,
+      count: item._count.location,
+    }));
+  }
+
+  /**
+   * Get featured companies (companies with most jobs)
+   */
+  public async getFeaturedCompanies(limit: number = 10) {
+    const companies = await this.db.getClient().company.findMany({
+      take: limit,
+      include: {
+        _count: {
+          select: {
+            jobs: {
+              where: {
+                status: "PUBLISHED",
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        jobs: {
+          _count: "desc",
+        },
+      },
+    });
+
+    return companies.filter((company: any) => company._count.jobs > 0);
+  }
+
+  /**
    * Helper: Validate URL format
    */
   private isValidUrl(url: string): boolean {
@@ -524,6 +838,4 @@ export class CompanyService {
       return false;
     }
   }
-
-  // Validate founded date if provided
 }
