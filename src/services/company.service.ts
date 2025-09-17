@@ -247,7 +247,7 @@ export class CompanyService {
         },
         jobs: {
           orderBy: {
-            createdBy: "desc",
+            createdAt: "desc",
           },
           take: 10,
           include: {
@@ -744,6 +744,9 @@ export class CompanyService {
         orderBy: {
           name: "asc",
         },
+      }),
+      this.db.getClient().company.count({
+        where: { size },
       }),
     ]);
 
