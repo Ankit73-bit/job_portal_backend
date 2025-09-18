@@ -2,6 +2,7 @@ import { AppError } from "@/utils/AppError";
 import { DatabaseService } from "./database.service";
 import path from "path";
 import { FileHelper } from "@/utils/file.helper";
+import { Prisma } from "@/generated/prisma";
 
 interface CreateCompanyData {
   name: string;
@@ -187,7 +188,7 @@ export class CompanyService {
       where: {
         name: {
           equals: name.trim(),
-          mode: "insensitive",
+          mode: Prisma.QueryMode.insensitive,
         },
       },
     });
@@ -297,7 +298,7 @@ export class CompanyService {
           id: { not: existingCompany.id },
           name: {
             equals: name.trim(),
-            mode: "insensitive",
+            mode: Prisma.QueryMode.insensitive,
           },
         },
       });
@@ -497,25 +498,25 @@ export class CompanyService {
             {
               name: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
             {
               description: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
             {
               industry: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
             {
               location: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
           ],
@@ -543,25 +544,25 @@ export class CompanyService {
             {
               name: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
             {
               description: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
             {
               industry: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
             {
               location: {
                 contains: searchTerm,
-                mode: "insensitive",
+                mode: Prisma.QueryMode.insensitive,
               },
             },
           ],
@@ -677,7 +678,7 @@ export class CompanyService {
         where: {
           industry: {
             equals: industry,
-            mode: "insensitive",
+            mode: Prisma.QueryMode.insensitive,
           },
         },
         include: {
@@ -699,7 +700,7 @@ export class CompanyService {
         where: {
           industry: {
             equals: industry,
-            mode: "insensitive",
+            mode: Prisma.QueryMode.insensitive,
           },
         },
       }),
